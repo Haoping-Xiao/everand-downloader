@@ -2,6 +2,7 @@ import pymongo
 import concurrent.futures
 import subprocess
 import shutil
+import os
 
 # Replace these variables with your MongoDB connection details
 mongo_host = "127.0.0.1"
@@ -19,6 +20,8 @@ all_documents = collection.find()
 
 # Function to run script2.py and return "success" or "failed"
 def run_script(argument):
+    cache_dir = None
+    debug_capture = os.environ.get("EVERAND_DEBUG_CAPTURE", "1") == "1"
     try:
         # Execute run.py
         book_id = argument["id"]
@@ -33,17 +36,22 @@ def run_script(argument):
         if process.returncode == 0:
             return f"successfully download {book_id} {book_title}"
         else:
-            shutil.rmtree(cache_dir)
+            if cache_dir and os.path.isdir(cache_dir) and not debug_capture:
+                shutil.rmtree(cache_dir)
+            error = stderr.decode("utf-8", errors="ignore").strip()
+            if error:
+                return f"failed download {book_id} {book_title}: {error}"
             return f"failed download {book_id} {book_title}"
     except Exception as e:
-        shutil.rmtree(cache_dir)
-        return f"failed download {book_id} {book_title}"
+        if cache_dir and os.path.isdir(cache_dir) and not debug_capture:
+            shutil.rmtree(cache_dir)
+        return f"failed download {book_id} {book_title}: {e}"
 
 # Number of total script2.py instances
 total_instances = 2297673
 
 # Number of instances to run concurrently
-concurrent_limit = 2
+concurrent_limit = 1
 
 # Create a ThreadPoolExecutor with the concurrent limit
 with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_limit) as executor:
